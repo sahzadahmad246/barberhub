@@ -56,13 +56,15 @@ export const authOptions: NextAuthOptions = {
         } catch (error) {
           // Pass specific error messages to the client
           const message = (error as { message?: string })?.message || '';
-          //
-          if (message.includes('not verified')) {
+          
+          if (message.includes('not verified') || message.includes('verify your email')) {
             throw new Error('EMAIL_NOT_VERIFIED');
-          } else if (message.includes('Invalid credentials')) {
+          } else if (message.includes('Invalid email or password') || message.includes('Incorrect email or password')) {
             throw new Error('INVALID_CREDENTIALS');
           } else if (message.includes('not found')) {
             throw new Error('USER_NOT_FOUND');
+          } else if (message.includes('Google sign-in')) {
+            throw new Error('USE_GOOGLE_SIGNIN');
           }
           
           throw new Error('Authentication failed');
@@ -84,6 +86,11 @@ export const authOptions: NextAuthOptions = {
             if (!existingUser.googleId) {
               existingUser.googleId = account.providerAccountId;
               existingUser.emailVerified = true;
+              
+              // If user has password, update provider to 'both'
+              if (existingUser.password) {
+                existingUser.provider = 'both';
+              }
             }
             // Update Google user's profile picture if changed
             if (user.image && existingUser.profilePicture?.url !== user.image) {
@@ -101,7 +108,7 @@ export const authOptions: NextAuthOptions = {
               provider: 'google',
               googleId: account.providerAccountId,
               emailVerified: true, // Google users are automatically verified
-              role: 'user', // Default role
+              role: 'user',
               profilePicture: user.image ? {
                 url: user.image,
                 publicId: '' // Google images don't have Cloudinary public IDs

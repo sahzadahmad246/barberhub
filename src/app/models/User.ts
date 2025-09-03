@@ -16,14 +16,22 @@ export interface IUser extends Document {
   emailVerificationExpires?: Date;
   role: 'user' | 'staff' | 'owner' | 'admin';
   salonId?: mongoose.Types.ObjectId;
-  provider: 'email' | 'google';
+  provider: 'email' | 'google' | 'both';
   googleId?: string;
+  // New fields for password reset and OTP verification
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
+  otpCode?: string;
+  otpExpiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   
   // Instance methods
   comparePassword(candidatePassword: string): Promise<boolean>;
   generateEmailVerificationToken(): string;
+  generatePasswordResetToken(): string;
+  generateOTP(): string;
+  verifyOTP(otp: string): boolean;
 }
 
 // Schema
@@ -96,8 +104,8 @@ const UserSchema = new Schema<IUser>(
     provider: {
       type: String,
       enum: {
-        values: ['email', 'google'],
-        message: 'Provider must be either email or google'
+        values: ['email', 'google', 'both'],
+        message: 'Provider must be either email, google, or both'
       },
       required: [true, 'Provider is required'],
     },
@@ -114,6 +122,23 @@ const UserSchema = new Schema<IUser>(
         },
         message: 'Google ID is required for Google authentication'
       }
+    },
+    // New fields for password reset and OTP verification
+    passwordResetToken: {
+      type: String,
+      select: false, // Don't include in queries by default
+    },
+    passwordResetExpires: {
+      type: Date,
+      select: false, // Don't include in queries by default
+    },
+    otpCode: {
+      type: String,
+      select: false, // Don't include in queries by default
+    },
+    otpExpiresAt: {
+      type: Date,
+      select: false, // Don't include in queries by default
     },
   },
   { 
@@ -167,6 +192,34 @@ UserSchema.methods.generateEmailVerificationToken = function(): string {
   this.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
   
   return token;
+};
+
+// Instance method to generate password reset token
+UserSchema.methods.generatePasswordResetToken = function(): string {
+  const token = crypto.randomBytes(32).toString('hex');
+  
+  this.passwordResetToken = token;
+  this.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  
+  return token;
+};
+
+// Instance method to generate OTP for email verification
+UserSchema.methods.generateOTP = function(): string {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  this.otpCode = otp;
+  this.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  
+  return otp;
+};
+
+// Instance method to verify OTP
+UserSchema.methods.verifyOTP = function(otp: string): boolean {
+  if (!this.otpExpiresAt || this.otpExpiresAt.getTime() < Date.now()) {
+    return false;
+  }
+  return this.otpCode === otp;
 };
 
 // Ensure email verification is set to true for Google users

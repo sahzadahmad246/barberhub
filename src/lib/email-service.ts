@@ -443,4 +443,304 @@ The Barber Hub Team
   static clearRateLimit(email: string): void {
     emailRateLimit.delete(email);
   }
+
+  /**
+   * Send password reset OTP email
+   */
+  static async sendPasswordResetOTP(data: { email: string; name: string; otp: string }): Promise<{ success: boolean; error?: string; rateLimited?: boolean; }> {
+    try {
+      if (this.isRateLimited(data.email)) {
+        return { success: false, error: 'Too many emails sent. Please wait.', rateLimited: true };
+      }
+
+      if (!process.env.RESEND_API_KEY) {
+        throw new Error('RESEND_API_KEY environment variable is not set');
+      }
+
+      const result = await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: [data.email],
+        subject: 'Password Reset Code - Barber Hub',
+        html: this.generatePasswordResetOTPHTML(data),
+        text: this.generatePasswordResetOTPText(data)
+      });
+
+      this.updateRateLimit(data.email);
+
+      if (result.error) {
+        return { success: false, error: 'Failed to send password reset email' };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to send password reset email' };
+    }
+  }
+
+  /**
+   * Send email verification OTP
+   */
+  static async sendVerificationOTP(data: { email: string; name: string; otp: string }): Promise<{ success: boolean; error?: string; rateLimited?: boolean; }> {
+    try {
+      if (this.isRateLimited(data.email)) {
+        return { success: false, error: 'Too many emails sent. Please wait.', rateLimited: true };
+      }
+
+      if (!process.env.RESEND_API_KEY) {
+        throw new Error('RESEND_API_KEY environment variable is not set');
+      }
+
+      const result = await resend.emails.send({
+        from: 'onboarding@resend.dev',
+        to: [data.email],
+        subject: 'Email Verification Code - Barber Hub',
+        html: this.generateVerificationOTPHTML(data),
+        text: this.generateVerificationOTPText(data)
+      });
+
+      this.updateRateLimit(data.email);
+
+      if (result.error) {
+        return { success: false, error: 'Failed to send verification email' };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to send verification email' };
+    }
+  }
+
+  /**
+   * Generate password reset OTP HTML template
+   */
+  private static generatePasswordResetOTPHTML(data: { email: string; name: string; otp: string }): string {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset - Barber Hub</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+          }
+          .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
+          }
+          .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #000;
+            margin-bottom: 10px;
+          }
+          .otp-code {
+            background-color: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 30px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #000;
+          }
+          .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #6c757d;
+            font-size: 14px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">Barber Hub</div>
+            <h1>Password Reset Request</h1>
+          </div>
+          
+          <p>Hello ${data.name},</p>
+          
+          <p>We received a request to reset your password for your Barber Hub account. Use the verification code below to complete the process:</p>
+          
+          <div class="otp-code">${data.otp}</div>
+          
+          <div class="warning">
+            <strong>Important:</strong> This code will expire in 10 minutes. If you didn't request this password reset, please ignore this email.
+          </div>
+          
+          <p>If you have any questions or need assistance, please contact our support team.</p>
+          
+          <div class="footer">
+            <p>This is an automated message, please do not reply to this email.</p>
+            <p>&copy; 2024 Barber Hub. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate password reset OTP text template
+   */
+  private static generatePasswordResetOTPText(data: { email: string; name: string; otp: string }): string {
+    return `
+Password Reset Request - Barber Hub
+
+Hello ${data.name},
+
+We received a request to reset your password for your Barber Hub account. Use the verification code below to complete the process:
+
+${data.otp}
+
+Important: This code will expire in 10 minutes. If you didn't request this password reset, please ignore this email.
+
+If you have any questions or need assistance, please contact our support team.
+
+This is an automated message, please do not reply to this email.
+
+© 2024 Barber Hub. All rights reserved.
+    `;
+  }
+
+  /**
+   * Generate email verification OTP HTML template
+   */
+  private static generateVerificationOTPHTML(data: { email: string; name: string; otp: string }): string {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification - Barber Hub</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+          }
+          .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
+          }
+          .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #000;
+            margin-bottom: 10px;
+          }
+          .otp-code {
+            background-color: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 30px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #000;
+          }
+          .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #6c757d;
+            font-size: 14px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="logo">Barber Hub</div>
+            <h1>Email Verification</h1>
+          </div>
+          
+          <p>Hello ${data.name},</p>
+          
+          <p>Please verify your email address for your Barber Hub account. Use the verification code below:</p>
+          
+          <div class="otp-code">${data.otp}</div>
+          
+          <div class="warning">
+            <strong>Important:</strong> This code will expire in 10 minutes. If you didn't create this account, please ignore this email.
+          </div>
+          
+          <p>Once verified, you'll have full access to your account.</p>
+          
+          <div class="footer">
+            <p>This is an automated message, please do not reply to this email.</p>
+            <p>&copy; 2024 Barber Hub. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate email verification OTP text template
+   */
+  private static generateVerificationOTPText(data: { email: string; name: string; otp: string }): string {
+    return `
+Email Verification - Barber Hub
+
+Hello ${data.name},
+
+Please verify your email address for your Barber Hub account. Use the verification code below:
+
+${data.otp}
+
+Important: This code will expire in 10 minutes. If you didn't create this account, please ignore this email.
+
+Once verified, you'll have full access to your account.
+
+This is an automated message, please do not reply to this email.
+
+© 2024 Barber Hub. All rights reserved.
+    `;
+  }
 }

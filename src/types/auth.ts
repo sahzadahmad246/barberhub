@@ -28,6 +28,27 @@ export interface AuthResult {
   message?: string;
 }
 
+// New types for enhanced authentication
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface PasswordResetVerify {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+export interface EmailVerificationOTP {
+  email: string;
+  otp: string;
+}
+
+export interface AddPasswordToGoogleUser {
+  email: string;
+  password: string;
+}
+
 export interface CloudinaryResult {
   url: string;
   publicId: string;

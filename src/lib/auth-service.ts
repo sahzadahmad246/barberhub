@@ -173,9 +173,13 @@ export class AuthService {
         throw new AuthError('Invalid email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
       }
 
-      // Check if user uses email provider (has password)
-      if (user.provider !== 'email' || !user.password) {
-        throw new AuthError('Please use Google sign-in for this account', 400, 'INVALID_LOGIN_METHOD');
+      // Check if user can use email login (has password)
+      if (!user.password) {
+        if (user.provider === 'google') {
+          throw new AuthError('Please use Google sign-in for this account', 400, 'INVALID_LOGIN_METHOD');
+        } else {
+          throw new AuthError('Incorrect email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
+        }
       }
 
       // Verify password
@@ -474,6 +478,218 @@ export class AuthService {
       await user.save();
     }
     return user;
+  }
+
+  /**
+   * Request password reset by sending OTP to user's email
+   */
+  static async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await connectDB();
+
+      const user = await User.findOne({ email });
+      if (!user) {
+        // Don't reveal if user exists or not for security
+        return {
+          success: true,
+          message: 'If an account with this email exists, a password reset OTP has been sent.'
+        };
+      }
+
+      // Generate OTP and save to user
+      const otp = user.generateOTP();
+      await user.save();
+
+      // Send password reset email with OTP
+      try {
+        const { EmailService } = await import('./email-service');
+        await EmailService.sendPasswordResetOTP({
+          email: user.email,
+          name: user.name,
+          otp
+        });
+      } catch (emailError) {
+        console.error('Failed to send password reset email:', emailError);
+        throw new AuthError('Failed to send password reset email', 500, AUTH_ERRORS.EMAIL_SERVICE_ERROR);
+      }
+
+      return {
+        success: true,
+        message: 'Password reset OTP sent successfully. Please check your email.'
+      };
+
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error;
+      }
+      throw new AuthError('Password reset request failed', 500, 'PASSWORD_RESET_ERROR');
+    }
+  }
+
+  /**
+   * Verify OTP and reset password
+   */
+  static async resetPasswordWithOTP(email: string, otp: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await connectDB();
+
+      const user = await User.findOne({ email }).select('+otpCode +otpExpiresAt');
+      if (!user) {
+        throw new AuthError('User not found', 404, AUTH_ERRORS.USER_NOT_FOUND);
+      }
+
+      // Verify OTP
+      if (!user.verifyOTP(otp)) {
+        throw new AuthError('Invalid or expired OTP', 400, AUTH_ERRORS.INVALID_TOKEN);
+      }
+
+      // Update password
+      user.password = newPassword;
+      user.otpCode = undefined;
+      user.otpExpiresAt = undefined;
+      
+      // If user was Google-only, now they can use both methods
+      if (user.provider === 'google') {
+        user.provider = 'both';
+      }
+      
+      await user.save();
+
+      return {
+        success: true,
+        message: 'Password reset successfully. You can now login with your new password.'
+      };
+
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error;
+      }
+      throw new AuthError('Password reset failed', 500, 'PASSWORD_RESET_ERROR');
+    }
+  }
+
+  /**
+   * Send OTP for email verification
+   */
+  static async sendEmailVerificationOTP(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await connectDB();
+
+      const user = await User.findOne({ email });
+      if (!user) {
+        throw new AuthError('User not found', 404, AUTH_ERRORS.USER_NOT_FOUND);
+      }
+
+      if (user.emailVerified) {
+        throw new AuthError('Email is already verified', 400, 'EMAIL_ALREADY_VERIFIED');
+      }
+
+      // Generate OTP and save to user
+      const otp = user.generateOTP();
+      await user.save();
+
+      // Send verification email with OTP
+      try {
+        const { EmailService } = await import('./email-service');
+        await EmailService.sendVerificationOTP({
+          email: user.email,
+          name: user.name,
+          otp
+        });
+      } catch (emailError) {
+        console.error('Failed to send verification OTP email:', emailError);
+        throw new AuthError('Failed to send verification OTP', 500, AUTH_ERRORS.EMAIL_SERVICE_ERROR);
+      }
+
+      return {
+        success: true,
+        message: 'Verification OTP sent successfully. Please check your email.'
+      };
+
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error;
+      }
+      throw new AuthError('Failed to send verification OTP', 500, AUTH_ERRORS.EMAIL_SERVICE_ERROR);
+    }
+  }
+
+  /**
+   * Verify email using OTP
+   */
+  static async verifyEmailWithOTP(email: string, otp: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await connectDB();
+
+      const user = await User.findOne({ email }).select('+otpCode +otpExpiresAt');
+      if (!user) {
+        throw new AuthError('User not found', 404, AUTH_ERRORS.USER_NOT_FOUND);
+      }
+
+      if (user.emailVerified) {
+        throw new AuthError('Email is already verified', 400, 'EMAIL_ALREADY_VERIFIED');
+      }
+
+      // Verify OTP
+      if (!user.verifyOTP(otp)) {
+        throw new AuthError('Invalid or expired OTP', 400, AUTH_ERRORS.INVALID_TOKEN);
+      }
+
+      // Mark email as verified
+      user.emailVerified = true;
+      user.otpCode = undefined;
+      user.otpExpiresAt = undefined;
+      await user.save();
+
+      return {
+        success: true,
+        message: 'Email verified successfully'
+      };
+
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error;
+      }
+      throw new AuthError('Email verification failed', 500, 'VERIFICATION_ERROR');
+    }
+  }
+
+  /**
+   * Allow Google users to add a password for email login
+   */
+  static async addPasswordToGoogleUser(email: string, password: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await connectDB();
+
+      const user = await User.findOne({ email });
+      if (!user) {
+        throw new AuthError('User not found', 404, AUTH_ERRORS.USER_NOT_FOUND);
+      }
+
+      if (user.provider !== 'google') {
+        throw new AuthError('This account is not a Google account', 400, 'INVALID_ACCOUNT_TYPE');
+      }
+
+      if (user.password) {
+        throw new AuthError('Password already exists for this account', 400, 'PASSWORD_ALREADY_EXISTS');
+      }
+
+      // Add password to Google user
+      user.password = password;
+      user.provider = 'both'; // Now supports both Google and email login
+      await user.save();
+
+      return {
+        success: true,
+        message: 'Password added successfully. You can now login with either Google or email/password.'
+      };
+
+    } catch (error) {
+      if (error instanceof AuthError) {
+        throw error;
+      }
+      throw new AuthError('Failed to add password', 500, 'ADD_PASSWORD_ERROR');
+    }
   }
 }
 

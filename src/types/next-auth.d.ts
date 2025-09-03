@@ -9,7 +9,7 @@ declare module 'next-auth' {
       image?: string | null;
       role: 'user' | 'staff' | 'owner' | 'admin';
       emailVerified: boolean;
-      provider: 'email' | 'google';
+      provider: 'email' | 'google' | 'both';
       salonId?: string;
     };
   }
@@ -21,14 +21,14 @@ declare module 'next-auth' {
     image?: string | null;
     role?: 'user' | 'staff' | 'owner' | 'admin';
     emailVerified?: boolean;
-    provider?: 'email' | 'google';
+    provider?: 'email' | 'google' | 'both';
     salonId?: string;
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
-    provider?: 'email' | 'google';
+    provider?: 'email' | 'google' | 'both';
     googleId?: string;
     role?: 'user' | 'staff' | 'owner' | 'admin';
     emailVerified?: boolean;

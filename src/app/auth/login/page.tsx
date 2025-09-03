@@ -32,7 +32,12 @@ function LoginPageContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState("")
   const [showEmailVerificationPrompt, setShowEmailVerificationPrompt] = useState(false)
+  const [showPasswordResetPrompt, setShowPasswordResetPrompt] = useState(false)
+  const [showOTPVerification, setShowOTPVerification] = useState(false)
   const [unverifiedEmail, setUnverifiedEmail] = useState("")
+  const [otp, setOtp] = useState("")
+  const [isOtpLoading, setIsOtpLoading] = useState(false)
+  const [isPasswordResetLoading, setIsPasswordResetLoading] = useState(false)
 
   // Get messages from URL params
   const urlMessage = searchParams.get("message")
@@ -60,6 +65,8 @@ function LoginPageContent() {
     setIsLoading(true)
     setApiError("")
     setShowEmailVerificationPrompt(false)
+    setShowPasswordResetPrompt(false)
+    setShowOTPVerification(false)
     clearErrors()
 
     try {
@@ -75,7 +82,11 @@ function LoginPageContent() {
         if (result.error === "EMAIL_NOT_VERIFIED") {
           setShowEmailVerificationPrompt(true)
           setUnverifiedEmail(values.email)
-          setApiError(getErrorMessage("EMAIL_NOT_VERIFIED", "login"))
+          setApiError("Please verify your email address to continue. Check your inbox for a verification link.")
+        } else if (result.error === "INVALID_CREDENTIALS") {
+          setApiError("Incorrect email or password. Please try again.")
+        } else if (result.error === "USER_NOT_FOUND") {
+          setApiError("No account found with this email address. Please check your email or create a new account.")
         } else {
           const errorMessage = getErrorMessage(result.error, "login")
           setApiError(errorMessage)
@@ -98,7 +109,7 @@ function LoginPageContent() {
 
     setIsLoading(true)
     try {
-      const response = await fetch("/api/auth/send-verification", {
+      const response = await fetch("/api/auth/send-verification-otp", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -109,16 +120,76 @@ function LoginPageContent() {
       const data = await response.json()
 
       if (response.ok) {
-        setApiError("Verification email sent! Please check your inbox and click the verification link.")
-        setShowEmailVerificationPrompt(false)
+        setShowOTPVerification(true)
+        setApiError("Verification OTP sent! Please check your inbox and enter the code below.")
       } else {
-        setApiError(data.message || "Failed to send verification email.")
+        setApiError(data.message || "Failed to send verification OTP.")
       }
     } catch (error) {
       console.error("Resend verification error:", error)
-      setApiError("Failed to send verification email. Please try again.")
+      setApiError("Failed to send verification OTP. Please try again.")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleVerifyOTP = async () => {
+    if (!unverifiedEmail || !otp) return
+
+    setIsOtpLoading(true)
+    try {
+      const response = await fetch("/api/auth/verify-email-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: unverifiedEmail, otp }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setApiError("Email verified successfully! You can now login.")
+        setShowOTPVerification(false)
+        setShowEmailVerificationPrompt(false)
+        setOtp("")
+      } else {
+        setApiError(data.message || "Failed to verify OTP.")
+      }
+    } catch (error) {
+      console.error("OTP verification error:", error)
+      setApiError("Failed to verify OTP. Please try again.")
+    } finally {
+      setIsOtpLoading(false)
+    }
+  }
+
+  const handleRequestPasswordReset = async () => {
+    if (!values.email) return
+
+    setIsPasswordResetLoading(true)
+    try {
+      const response = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: values.email }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setApiError("Password reset OTP sent! Please check your inbox and use the code to reset your password.")
+        setShowPasswordResetPrompt(false)
+      } else {
+        setApiError(data.message || "Failed to send password reset OTP.")
+      }
+    } catch (error) {
+      console.error("Password reset request error:", error)
+      setApiError("Failed to send password reset OTP. Please try again.")
+    } finally {
+      setIsPasswordResetLoading(false)
     }
   }
 
@@ -172,11 +243,11 @@ function LoginPageContent() {
 
           {/* API Error */}
           {apiError && (
-            <div className={`rounded-md p-4 ${showEmailVerificationPrompt ? "bg-gray-100" : "bg-gray-100"}`}>
+            <div className={`rounded-md p-4 ${showEmailVerificationPrompt || showOTPVerification ? "bg-gray-100" : "bg-gray-100"}`}>
               <div className="flex">
                 <div className="flex-shrink-0">
                   <svg className={`h-5 w-5 text-black`} viewBox="0 0 20 20" fill="currentColor">
-                    {showEmailVerificationPrompt ? (
+                    {showEmailVerificationPrompt || showOTPVerification ? (
                       <path
                         fillRule="evenodd"
                         d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
@@ -193,15 +264,36 @@ function LoginPageContent() {
                 </div>
                 <div className="ml-3">
                   <p className={`text-sm font-medium text-black`}>{apiError}</p>
-                  {showEmailVerificationPrompt && (
-                    <div className="mt-2">
+                  {showEmailVerificationPrompt && !showOTPVerification && (
+                    <div className="mt-2 space-y-2">
                       <button
                         onClick={handleResendVerification}
                         disabled={isLoading}
                         className="text-sm font-medium text-black underline hover:text-gray-700 disabled:opacity-50"
                       >
-                        {isLoading ? "Sending..." : "Resend verification email"}
+                        {isLoading ? "Sending..." : "Send verification OTP"}
                       </button>
+                    </div>
+                  )}
+                  {showOTPVerification && (
+                    <div className="mt-3 space-y-3">
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          placeholder="Enter OTP"
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                          maxLength={6}
+                        />
+                        <button
+                          onClick={handleVerifyOTP}
+                          disabled={isOtpLoading || !otp}
+                          className="px-4 py-2 bg-black text-white text-sm rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isOtpLoading ? "Verifying..." : "Verify"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -264,6 +356,50 @@ function LoginPageContent() {
                 autoComplete="current-password"
               />
             </div>
+
+            {/* Forgot Password Link */}
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => setShowPasswordResetPrompt(true)}
+                className="text-sm font-medium text-black hover:text-gray-700 underline"
+              >
+                Forgot your password?
+              </button>
+            </div>
+
+            {/* Password Reset Prompt */}
+            {showPasswordResetPrompt && (
+              <div className="rounded-md bg-gray-50 p-4">
+                <p className="text-sm text-gray-700 mb-3">
+                  Enter your email address and we&apos;ll send you a password reset code.
+                </p>
+                <div className="flex space-x-2">
+                  <input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={values.email}
+                    onChange={(e) => handleChange("email", e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRequestPasswordReset}
+                    disabled={isPasswordResetLoading || !values.email}
+                    className="px-4 py-2 bg-black text-white text-sm rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isPasswordResetLoading ? "Sending..." : "Send Code"}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordResetPrompt(false)}
+                  className="text-sm text-gray-600 hover:text-gray-800 mt-2 underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
 
             {/* Submit Button */}
             <div>

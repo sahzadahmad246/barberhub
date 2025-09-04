@@ -185,7 +185,7 @@ export default function SubscriptionPage() {
     currency: string;
     name: string;
     description: string;
-    orderId: string;
+    subscriptionId: string;
     customerName: string;
     customerEmail: string;
     customerContact: string;
@@ -219,7 +219,7 @@ export default function SubscriptionPage() {
     currency: string;
     name: string;
     description: string;
-    orderId: string;
+    subscriptionId: string;
     customerName: string;
     customerEmail: string;
     customerContact: string;
@@ -232,7 +232,7 @@ export default function SubscriptionPage() {
       currency: paymentData.currency,
       name: paymentData.name,
       description: paymentData.description,
-      order_id: paymentData.orderId,
+      subscription_id: paymentData.subscriptionId,
       prefill: {
         name: paymentData.customerName,
         email: paymentData.customerEmail,
@@ -243,7 +243,7 @@ export default function SubscriptionPage() {
       },
       handler: async function (response: {
         razorpay_payment_id: string;
-        razorpay_order_id: string;
+        razorpay_subscription_id: string;
         razorpay_signature: string;
       }) {
         // Payment successful
@@ -255,7 +255,7 @@ export default function SubscriptionPage() {
             },
             body: JSON.stringify({
               razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_order_id: response.razorpay_order_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
               razorpay_signature: response.razorpay_signature
             }),
           })

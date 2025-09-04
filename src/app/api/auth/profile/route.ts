@@ -21,7 +21,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const methodError = validateMethod(['GET'])(request);
   if (methodError) throw methodError;
   // Check authentication
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions) as { user?: { id?: string } } | null;
   
   if (!session?.user?.id) {
     throw new AuthError(
@@ -31,30 +31,53 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Fetch user profile
-  const user = await getUserById(session.user.id);
+  // Fetch user profile - check both User and PendingUser collections
+  let profileData;
   
-  if (!user) {
-    throw new AuthError(
-      'User not found',
-      404,
-      'USER_NOT_FOUND'
-    );
+  try {
+    // First try to find in User collection
+    const user = await getUserById(session.user.id);
+    
+    // User exists in User collection
+    profileData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      profilePicture: user.profilePicture,
+      emailVerified: user.emailVerified,
+      role: user.role,
+      salonId: user.salonId,
+      provider: user.provider,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    };
+  } catch {
+    // If not found in User collection, check PendingUser collection
+    const { default: PendingUser } = await import('@/app/models/PendingUser');
+    const pendingUser = await PendingUser.findById(session.user.id);
+    
+    if (!pendingUser) {
+      throw new AuthError(
+        'User not found',
+        404,
+        'USER_NOT_FOUND'
+      );
+    }
+    
+    // Create profile data for pending users
+    profileData = {
+      id: pendingUser._id,
+      name: pendingUser.name,
+      email: pendingUser.email,
+      profilePicture: undefined,
+      emailVerified: false,
+      role: 'user',
+      salonId: undefined,
+      provider: 'email',
+      createdAt: pendingUser.createdAt,
+      updatedAt: pendingUser.updatedAt
+    };
   }
-
-  // Return user profile data (excluding sensitive information)
-  const profileData = {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    profilePicture: user.profilePicture,
-    emailVerified: user.emailVerified,
-    role: user.role,
-    salonId: user.salonId,
-    provider: user.provider,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt
-  };
 
   return createSuccessResponse(
     profileData,
@@ -74,7 +97,7 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
   const bodyError = validateRequestBody(request);
   if (bodyError) throw bodyError;
   // Check authentication
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions) as { user?: { id?: string } } | null;
   
   if (!session?.user?.id) {
     throw new AuthError(

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { User, Mail, Shield, Building2, Camera, Check, X, AlertCircle, Upload } from "lucide-react"
+import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner"
 
 interface UserProfile {
   id: string
@@ -215,11 +216,7 @@ function ProfileContent() {
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-muted-foreground">Loading profile...</p>
-              <div className="mt-4">
-                <Button variant="outline" size="sm" onClick={fetchProfile}>
-                  Retry
-                </Button>
-              </div>
+             
             </div>
           </div>
         </div>
@@ -233,6 +230,11 @@ function ProfileContent() {
         <h1 className="text-3xl font-bold mb-2">Profile</h1>
         <p className="text-muted-foreground">Manage your account information and preferences</p>
       </div>
+
+      {/* Email Verification Banner */}
+      {!profile.emailVerified && (
+        <EmailVerificationBanner email={profile.email} />
+      )}
 
       {/* Error/Success Messages */}
       {error && (
@@ -377,12 +379,12 @@ function ProfileContent() {
                   </div>
                   <div className="flex items-center gap-2">
                     {profile.emailVerified ? (
-                      <Badge variant="success" className="text-xs">
+                      <Badge variant="default" className="text-xs bg-green-100 text-green-800 hover:bg-green-200">
                         <Check className="h-3 w-3 mr-1" />
                         Verified
                       </Badge>
                     ) : (
-                      <Badge variant="warning" className="text-xs">
+                      <Badge variant="default" className="text-xs bg-yellow-100 text-yellow-800 hover:bg-yellow-200">
                         <X className="h-3 w-3 mr-1" />
                         Unverified
                       </Badge>

@@ -51,10 +51,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const currentUser = await User.findById(session.user.id);
 
   if (!currentUser) {
+    // If not found in User collection, check PendingUser collection
+    const { default: PendingUser } = await import('@/app/models/PendingUser');
+    const pendingUser = await PendingUser.findById(session.user.id);
+    
+    if (!pendingUser) {
+      throw new AuthError(
+        'User not found',
+        HTTP_STATUS.NOT_FOUND,
+        'USER_NOT_FOUND'
+      );
+    }
+    
+    // For pending users, we can't upload profile pictures yet
+    // They need to verify their email first
     throw new AuthError(
-      'User not found',
-      HTTP_STATUS.NOT_FOUND,
-      'USER_NOT_FOUND'
+      'Please verify your email address before uploading a profile picture',
+      HTTP_STATUS.FORBIDDEN,
+      'EMAIL_NOT_VERIFIED'
     );
   }
 

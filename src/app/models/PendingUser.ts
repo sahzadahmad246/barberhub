@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 export interface IPendingUser extends Document {
   name: string;
@@ -12,6 +13,7 @@ export interface IPendingUser extends Document {
   updatedAt: Date;
   setOtp(otp: string, ttlMs: number): void;
   verifyOtp(otp: string): boolean;
+  verifyPassword(candidatePassword: string): Promise<boolean>;
 }
 
 const PendingUserSchema = new Schema<IPendingUser>({
@@ -19,7 +21,7 @@ const PendingUserSchema = new Schema<IPendingUser>({
   email: { type: String, required: true, lowercase: true, trim: true, index: { unique: true } },
   passwordHash: { type: String, required: true, select: false },
   otpHash: { type: String, required: true, select: false },
-  otpExpiresAt: { type: Date, required: true, index: { expires: 600 } },
+  otpExpiresAt: { type: Date, required: true },
   provider: { type: String, enum: ['email'], default: 'email' }
 }, {
   timestamps: true
@@ -39,6 +41,14 @@ PendingUserSchema.methods.verifyOtp = function(otp: string): boolean {
     return false;
   }
   return this.otpHash === hashOtp(otp);
+};
+
+// Instance method to verify password
+PendingUserSchema.methods.verifyPassword = async function(candidatePassword: string): Promise<boolean> {
+  if (!this.passwordHash) {
+    return false;
+  }
+  return bcrypt.compare(candidatePassword, this.passwordHash);
 };
 
 // Indexes defined on fields above to avoid duplicates

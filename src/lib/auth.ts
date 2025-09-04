@@ -139,6 +139,7 @@ export const authOptions: NextAuthOptions = {
           const user = await User.findOne({ email: session.user.email });
           
           if (user) {
+            // User exists in User collection
             session.user.id = String(user._id);
             session.user.role = user.role;
             session.user.emailVerified = user.emailVerified;
@@ -148,6 +149,19 @@ export const authOptions: NextAuthOptions = {
             // Update session with latest profile picture
             if (user.profilePicture?.url) {
               session.user.image = user.profilePicture.url;
+            }
+          } else {
+            // If not found in User collection, check PendingUser collection
+            const { default: PendingUser } = await import('@/app/models/PendingUser');
+            const pendingUser = await PendingUser.findOne({ email: session.user.email });
+            
+            if (pendingUser) {
+              // Pending user found
+              session.user.id = String(pendingUser._id);
+              session.user.role = 'user';
+              session.user.emailVerified = false;
+              session.user.provider = 'email';
+              session.user.salonId = undefined;
             }
           }
         } catch (error) {

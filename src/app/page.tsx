@@ -1,8 +1,28 @@
 import Image from "next/image";
+import { Suspense } from "react";
+import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+async function HomeContent() {
+  const session = await getServerSession(authOptions);
+  
+  if (!session) {
+    redirect("/auth/login");
+  }
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-[calc(100vh-4rem)] p-8 pb-20 gap-16 sm:p-20">
+      {/* Email Verification Banner */}
+      {!session.user.emailVerified && (
+        <div className="w-full max-w-4xl">
+          <EmailVerificationBanner 
+            email={session.user.email!}
+          />
+        </div>
+      )}
+      
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
         <Image
           className="dark:invert"
@@ -99,5 +119,13 @@ export default function Home() {
         </a>
       </footer>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

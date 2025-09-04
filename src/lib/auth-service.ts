@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
-import User from '@/app/models/User';
+import User, { IUser } from '@/app/models/User';
 import connectDB from './database';
 import { AuthError, AUTH_ERRORS } from './errors';
 import type { 
@@ -166,44 +166,84 @@ export class AuthService {
     try {
       await connectDB();
 
-      // Find user by email and include password field
+      // First check if user exists in User collection
       const user = await User.findOne({ email: credentials.email }).select('+password');
       
-      if (!user) {
-        throw new AuthError('Invalid email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
-      }
+      if (user) {
+        // User exists in User collection
+        // Check if user can use email login (has password)
+        if (!user.password) {
+          if (user.provider === 'google') {
+            throw new AuthError('Please use Google sign-in for this account', 400, 'INVALID_LOGIN_METHOD');
+          } else {
+            throw new AuthError('Incorrect email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
+          }
+        }
 
-      // Check if user can use email login (has password)
-      if (!user.password) {
-        if (user.provider === 'google') {
-          throw new AuthError('Please use Google sign-in for this account', 400, 'INVALID_LOGIN_METHOD');
-        } else {
+        // Verify password
+        const isPasswordValid = await user.comparePassword(credentials.password);
+        if (!isPasswordValid) {
           throw new AuthError('Incorrect email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
         }
+
+        // Generate JWT token
+        const token = this.generateJWTToken({
+          userId: (user._id as mongoose.Types.ObjectId).toString(),
+          email: user.email,
+          role: user.role
+        });
+
+        // Remove password from user object before returning
+        const userObject = user.toObject();
+        delete userObject.password;
+
+        return {
+          success: true,
+          user: userObject,
+          token,
+          message: user.emailVerified ? 'Login successful' : 'Login successful. Please verify your email for full access.'
+        };
       }
 
-      // Verify password
-      const isPasswordValid = await user.comparePassword(credentials.password);
+      // If user not found in User collection, check PendingUser collection
+      const { default: PendingUser } = await import('@/app/models/PendingUser');
+      const pendingUser = await PendingUser.findOne({ email: credentials.email }).select('+passwordHash');
+      
+      if (!pendingUser) {
+        throw new AuthError('Incorrect email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
+      }
+
+      // Verify password for pending user
+      const isPasswordValid = await pendingUser.verifyPassword(credentials.password);
       if (!isPasswordValid) {
-        throw new AuthError('Invalid email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
+        throw new AuthError('Incorrect email or password', 401, AUTH_ERRORS.INVALID_CREDENTIALS);
       }
 
-      // Generate JWT token
+      // For pending users, create a temporary session and allow login
+      // They will be prompted to verify email after login
       const token = this.generateJWTToken({
-        userId: (user._id as mongoose.Types.ObjectId).toString(),
-        email: user.email,
-        role: user.role
+        userId: (pendingUser._id as mongoose.Types.ObjectId).toString(),
+        email: pendingUser.email,
+        role: 'user' // Default role for pending users
       });
 
-      // Remove password from user object before returning
-      const userObject = user.toObject();
-      delete userObject.password;
+      // Convert pending user to user object format
+      const userObject = {
+        _id: pendingUser._id,
+        name: pendingUser.name,
+        email: pendingUser.email,
+        role: 'user' as const,
+        emailVerified: false,
+        provider: 'email' as const,
+        createdAt: pendingUser.createdAt,
+        updatedAt: pendingUser.updatedAt
+      } as IUser;
 
       return {
         success: true,
         user: userObject,
         token,
-        message: user.emailVerified ? 'Login successful' : 'Login successful. Please verify your email for full access.'
+        message: 'Login successful. Please verify your email address for full access.'
       };
 
     } catch (error) {
@@ -575,25 +615,57 @@ export class AuthService {
     try {
       await connectDB();
 
+      // First check User collection
       const user = await User.findOne({ email });
-      if (!user) {
+      
+      if (user) {
+        // User exists in User collection
+        if (user.emailVerified) {
+          throw new AuthError('Email is already verified', 400, 'EMAIL_ALREADY_VERIFIED');
+        }
+
+        // Generate OTP and save to user
+        const otp = user.generateOTP();
+        await user.save();
+
+        // Send verification email with OTP
+        try {
+          const { EmailService } = await import('./email-service');
+          await EmailService.sendVerificationOTP({
+            email: user.email,
+            name: user.name,
+            otp
+          });
+        } catch (emailError) {
+          console.error('Failed to send verification OTP email:', emailError);
+          throw new AuthError('Failed to send verification OTP', 500, AUTH_ERRORS.EMAIL_SERVICE_ERROR);
+        }
+
+        return {
+          success: true,
+          message: 'Verification OTP sent to your email address'
+        };
+      }
+
+      // If not found in User collection, check PendingUser collection
+      const { default: PendingUser } = await import('@/app/models/PendingUser');
+      const pendingUser = await PendingUser.findOne({ email });
+      
+      if (!pendingUser) {
         throw new AuthError('User not found', 404, AUTH_ERRORS.USER_NOT_FOUND);
       }
 
-      if (user.emailVerified) {
-        throw new AuthError('Email is already verified', 400, 'EMAIL_ALREADY_VERIFIED');
-      }
-
-      // Generate OTP and save to user
-      const otp = user.generateOTP();
-      await user.save();
+      // Generate OTP for pending user
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      pendingUser.setOtp(otp, 10 * 60 * 1000); // 10 minutes
+      await pendingUser.save();
 
       // Send verification email with OTP
       try {
         const { EmailService } = await import('./email-service');
         await EmailService.sendVerificationOTP({
-          email: user.email,
-          name: user.name,
+          email: pendingUser.email,
+          name: pendingUser.name,
           otp
         });
       } catch (emailError) {
@@ -621,29 +693,63 @@ export class AuthService {
     try {
       await connectDB();
 
+      // First check User collection
       const user = await User.findOne({ email }).select('+otpCode +otpExpiresAt');
-      if (!user) {
+      
+      if (user) {
+        // User exists in User collection
+        if (user.emailVerified) {
+          throw new AuthError('Email is already verified', 400, 'EMAIL_ALREADY_VERIFIED');
+        }
+
+        // Verify OTP
+        if (!user.verifyOTP(otp)) {
+          throw new AuthError('Invalid or expired OTP', 400, AUTH_ERRORS.INVALID_TOKEN);
+        }
+
+        // Mark email as verified
+        user.emailVerified = true;
+        user.otpCode = undefined;
+        user.otpExpiresAt = undefined;
+        await user.save();
+
+        return {
+          success: true,
+          message: 'Email verified successfully'
+        };
+      }
+
+      // If not found in User collection, check PendingUser collection
+      const { default: PendingUser } = await import('@/app/models/PendingUser');
+      const pendingUser = await PendingUser.findOne({ email }).select('+otpHash');
+      
+      if (!pendingUser) {
         throw new AuthError('User not found', 404, AUTH_ERRORS.USER_NOT_FOUND);
       }
 
-      if (user.emailVerified) {
-        throw new AuthError('Email is already verified', 400, 'EMAIL_ALREADY_VERIFIED');
-      }
-
-      // Verify OTP
-      if (!user.verifyOTP(otp)) {
+      // Verify OTP for pending user
+      if (!pendingUser.verifyOtp(otp)) {
         throw new AuthError('Invalid or expired OTP', 400, AUTH_ERRORS.INVALID_TOKEN);
       }
 
-      // Mark email as verified
-      user.emailVerified = true;
-      user.otpCode = undefined;
-      user.otpExpiresAt = undefined;
-      await user.save();
+      // Create new user from pending user
+      const newUser = new User({
+        name: pendingUser.name,
+        email: pendingUser.email,
+        password: pendingUser.passwordHash, // PendingUser stores hashed password
+        role: 'user',
+        emailVerified: true,
+        provider: 'email'
+      });
+
+      await newUser.save();
+
+      // Delete pending user
+      await PendingUser.findByIdAndDelete(pendingUser._id);
 
       return {
         success: true,
-        message: 'Email verified successfully'
+        message: 'Email verified successfully. Your account has been activated.'
       };
 
     } catch (error) {

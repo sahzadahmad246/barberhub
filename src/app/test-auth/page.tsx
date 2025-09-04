@@ -101,7 +101,7 @@ export default function TestAuthPage() {
 
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Authenticated:</span>
-              <Badge variant={isAuthenticated ? "success" : "destructive"}>
+              <Badge variant={isAuthenticated ? "default" : "destructive"} className={isAuthenticated ? "bg-green-100 text-green-800 hover:bg-green-200" : ""}>
                 {isAuthenticated ? (
                   <><CheckCircle className="h-3 w-3 mr-1" />Yes</>
                 ) : (
@@ -112,7 +112,7 @@ export default function TestAuthPage() {
 
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Email Verified:</span>
-              <Badge variant={isVerified ? "success" : "warning"}>
+              <Badge variant="default" className={isVerified ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"}>
                 {isVerified ? (
                   <><CheckCircle className="h-3 w-3 mr-1" />Verified</>
                 ) : (
@@ -167,7 +167,7 @@ export default function TestAuthPage() {
                 {Object.entries(testResults).map(([test, result]) => (
                   <div key={test} className="flex items-center justify-between">
                     <span className="text-sm">{test}:</span>
-                    <Badge variant={result ? "success" : "destructive"}>
+                    <Badge variant={result ? "default" : "destructive"} className={result ? "bg-green-100 text-green-800 hover:bg-green-200" : ""}>
                       {result ? (
                         <><CheckCircle className="h-3 w-3 mr-1" />Pass</>
                       ) : (

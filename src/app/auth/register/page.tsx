@@ -11,6 +11,7 @@ import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton"
 import { useAuth } from "@/lib/auth-client"
 import { useFormValidation, validationRuleSets, getApiErrorMessage } from "@/lib/client-validation"
 import { getErrorSuggestions } from "@/lib/error-messages"
+import { User, AlertCircle, CheckCircle } from "lucide-react"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -151,29 +152,27 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-black">Create your account</h2>
-          <p className="mt-2 text-center text-sm text-gray-700">Join Barber Hub today</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="text-center mb-8">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gray-100 mb-4">
+              <User className="h-8 w-8 text-gray-600" />
+            </div>
+            
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Create Your Account</h2>
+            <p className="text-gray-600">Join Barber Hub today and start your journey</p>
+          </div>
 
         <div className="mt-8 space-y-6">
           {/* Success Message */}
           {successMessage && (
-            <div className="rounded-md bg-gray-50 p-4">
+            <div className="rounded-lg bg-green-50 border border-green-200 p-4">
               <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-black" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-black">{successMessage}</p>
+                <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="text-sm text-green-800">
+                  <p className="font-medium">Success!</p>
+                  <p>{successMessage}</p>
                 </div>
               </div>
             </div>
@@ -181,19 +180,12 @@ export default function RegisterPage() {
 
           {/* API Error */}
           {apiError && (
-            <div className="rounded-md bg-gray-100 p-4">
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
               <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-black" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-black">{apiError}</p>
+                <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="text-sm text-red-800">
+                  <p className="font-medium">Error</p>
+                  <p>{apiError}</p>
                 </div>
               </div>
             </div>
@@ -377,6 +369,7 @@ export default function RegisterPage() {
               </div>
             </form>
           )}
+          </div>
         </div>
       </div>
     </div>

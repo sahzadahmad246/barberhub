@@ -52,7 +52,7 @@ function AdminDashboardContent() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center space-x-2">
-              <Badge variant="success">Online</Badge>
+              <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-200">Online</Badge>
             </div>
             <p className="text-xs text-muted-foreground">
               All systems operational

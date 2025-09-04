@@ -4,12 +4,30 @@ import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import connectDB from "@/lib/database";
+import Subscription from "@/app/models/Subscription";
+import Salon from "@/app/models/Salon";
 
 async function HomeContent() {
   const session = await getServerSession(authOptions);
   
   if (!session) {
     redirect("/auth/login");
+  }
+
+  // Check if user has a subscription
+  await connectDB();
+  const subscription = await Subscription.findOne({ userId: session.user.id });
+  
+  if (!subscription) {
+    redirect("/subscription");
+  }
+
+  // Check if user has a salon
+  const salon = await Salon.findOne({ ownerId: session.user.id });
+  
+  if (!salon) {
+    redirect("/salon/onboard");
   }
 
   return (

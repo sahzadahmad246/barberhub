@@ -32,19 +32,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Parse request body
-  const { razorpay_payment_id, razorpay_subscription_id, razorpay_signature } = await parseRequestBody<{
+  const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = await parseRequestBody<{
     razorpay_payment_id: string;
-    razorpay_subscription_id: string;
+    razorpay_order_id: string;
     razorpay_signature: string;
   }>(request);
 
-  if (!razorpay_payment_id || !razorpay_subscription_id || !razorpay_signature) {
+  if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
     throw new Error('Payment verification data is required');
   }
 
   // Verify payment signature
   const isSignatureValid = PaymentService.verifyPaymentSignature(
-    razorpay_subscription_id,
+    razorpay_order_id,
     razorpay_payment_id,
     razorpay_signature
   );
@@ -56,7 +56,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Activate subscription
   const result = await PaymentService.activateSubscription(
     session.user.id,
-    razorpay_subscription_id,
+    razorpay_order_id,
     razorpay_payment_id
   );
 

@@ -55,6 +55,36 @@ export class PaymentService {
   }
 
   /**
+   * Create Razorpay order for first payment
+   */
+  private static async createRazorpayOrder(orderData: {
+    amount: number;
+    currency: string;
+    receipt: string;
+    notes: Record<string, string>;
+  }) {
+    const baseUrl = this.getRazorpayBaseUrl();
+    
+    console.log('Creating Razorpay order:', JSON.stringify(orderData, null, 2));
+    
+    const response = await fetch(`${baseUrl}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(`${this.RAZORPAY_KEY_ID}:${this.RAZORPAY_KEY_SECRET}`).toString('base64')}`
+      },
+      body: JSON.stringify(orderData)
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Razorpay order creation failed: ${error}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
    * Create Razorpay subscription
    */
   private static async createRazorpaySubscription(subscriptionData: {
@@ -169,38 +199,26 @@ export class PaymentService {
       // Calculate pricing
       const pricing = this.getPlanPricing(plan, billingCycle);
       
-      // Create Razorpay plan first
-      const razorpayPlan = await this.createRazorpayPlan({
-        period: billingCycle === 'monthly' ? 'monthly' : 'yearly',
-        interval: 1,
-        item: {
-          name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
-          amount: pricing.amount * 100, // Amount in paise
-          currency: 'INR',
-          description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} subscription plan (${billingCycle})`
-        }
-      });
-
-      // Create Razorpay subscription
-      const razorpaySubscription = await this.createRazorpaySubscription({
-        plan_id: razorpayPlan.id,
-        customer_notify: 1,
-        total_count: billingCycle === 'monthly' ? 12 : 1, // 12 months for monthly, 1 year for yearly
-        start_at: Math.floor(Date.now() / 1000), // Current timestamp
+      // Create Razorpay order for first payment
+      const razorpayOrder = await this.createRazorpayOrder({
+        amount: pricing.amount * 100, // Amount in paise
+        currency: 'INR',
+        receipt: `receipt_${userId}_${Date.now()}`,
         notes: {
           plan,
           billingCycle,
           userId,
-          customer_id: customer.id
+          customer_id: customer.id,
+          type: 'subscription_first_payment'
         }
       });
       
-      // Return subscription details for Razorpay checkout
+      // Return order details for Razorpay checkout
       return {
-        subscription: razorpaySubscription,
+        order: razorpayOrder,
         customer: customer,
         razorpayKeyId: this.RAZORPAY_KEY_ID,
-        subscriptionId: razorpaySubscription.id,
+        orderId: razorpayOrder.id,
         amount: pricing.amount * 100,
         currency: 'INR',
         name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
@@ -305,29 +323,29 @@ export class PaymentService {
   /**
    * Activate subscription after successful payment
    */
-  static async activateSubscription(userId: string, subscriptionId: string, paymentId: string) {
+  static async activateSubscription(userId: string, orderId: string, paymentId: string) {
     try {
       await connectDB();
 
-      // Get subscription details from Razorpay to extract plan information
+      // Get order details from Razorpay to extract plan information
       const baseUrl = this.getRazorpayBaseUrl();
-      const subscriptionResponse = await fetch(`${baseUrl}/subscriptions/${subscriptionId}`, {
+      const orderResponse = await fetch(`${baseUrl}/orders/${orderId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Basic ${Buffer.from(`${this.RAZORPAY_KEY_ID}:${this.RAZORPAY_KEY_SECRET}`).toString('base64')}`
         }
       });
 
-      if (!subscriptionResponse.ok) {
-        throw new Error('Failed to fetch subscription details from Razorpay');
+      if (!orderResponse.ok) {
+        throw new Error('Failed to fetch order details from Razorpay');
       }
 
-      const subscriptionData = await subscriptionResponse.json();
-      const notes = subscriptionData.notes || {};
+      const orderData = await orderResponse.json();
+      const notes = orderData.notes || {};
 
       // Check if subscription already exists (prevent duplicates)
       const existingSubscription = await Subscription.findOne({
-        razorpayOrderId: subscriptionId, // Store subscription ID in orderId field
+        razorpayOrderId: orderId,
         userId
       });
 
@@ -346,7 +364,7 @@ export class PaymentService {
         };
       }
 
-      // Create new subscription from subscription details
+      // Create new subscription from order details
       const pricing = this.getPlanPricing(notes.plan, notes.billingCycle);
       
       const subscription = new Subscription({
@@ -357,7 +375,7 @@ export class PaymentService {
         endDate: new Date(Date.now() + pricing.duration),
         amount: pricing.amount,
         billingCycle: notes.billingCycle,
-        razorpayOrderId: subscriptionId, // Store subscription ID in orderId field
+        razorpayOrderId: orderId, // Store order ID
         razorpayCustomerId: notes.customer_id,
         razorpayPaymentId: paymentId,
         isTrial: false

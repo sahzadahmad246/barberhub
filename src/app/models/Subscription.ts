@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface ISubscription extends Document {
   userId: string;
   plan: 'trial' | 'pro' | 'pro_plus';
-  status: 'active' | 'cancelled' | 'expired' | 'past_due' | 'pending' | 'paused' | 'failed';
+  status: 'active' | 'cancelled' | 'expired' | 'past_due' | 'pending' | 'paused' | 'failed' | 'created' | 'authenticated' | 'halted' | 'completed';
   startDate: Date;
   endDate: Date;
   amount: number;
@@ -11,10 +11,17 @@ export interface ISubscription extends Document {
   razorpayOrderId?: string;
   razorpayCustomerId?: string;
   razorpayPaymentId?: string;
+  razorpaySubscriptionId?: string;
+  razorpayPlanId?: string;
+  pausedAt?: Date;
   lastPaymentDate?: Date;
   nextPaymentDate?: Date;
   trialEndDate?: Date;
   isTrial: boolean;
+  cancelledAt?: Date;
+  cancelledBy?: 'user' | 'admin' | 'system';
+  cancelAtCycleEnd?: boolean;
+  benefitsEndDate?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,7 +40,7 @@ const SubscriptionSchema = new Schema<ISubscription>({
   },
   status: {
     type: String,
-    enum: ['active', 'cancelled', 'expired', 'past_due', 'pending', 'paused', 'failed'],
+    enum: ['active', 'cancelled', 'expired', 'past_due', 'pending', 'paused', 'failed', 'created', 'authenticated', 'halted', 'completed'],
     default: 'pending'
   },
   startDate: {
@@ -65,6 +72,17 @@ const SubscriptionSchema = new Schema<ISubscription>({
   razorpayPaymentId: {
     type: String
   },
+  razorpaySubscriptionId: {
+    type: String,
+    sparse: true,
+    unique: true
+  },
+  razorpayPlanId: {
+    type: String
+  },
+  pausedAt: {
+    type: Date
+  },
   lastPaymentDate: {
     type: Date
   },
@@ -77,6 +95,20 @@ const SubscriptionSchema = new Schema<ISubscription>({
   isTrial: {
     type: Boolean,
     default: false
+  },
+  cancelledAt: {
+    type: Date
+  },
+  cancelledBy: {
+    type: String,
+    enum: ['user', 'admin', 'system']
+  },
+  cancelAtCycleEnd: {
+    type: Boolean,
+    default: false
+  },
+  benefitsEndDate: {
+    type: Date
   }
 }, {
   timestamps: true
@@ -95,6 +127,15 @@ SubscriptionSchema.virtual('isActive').get(function() {
 // Virtual for checking if subscription is in trial
 SubscriptionSchema.virtual('isInTrial').get(function() {
   return this.isTrial && this.trialEndDate && this.trialEndDate > new Date();
+});
+
+// Virtual for checking if benefits are still active (for cancelled subscriptions)
+SubscriptionSchema.virtual('hasActiveBenefits').get(function() {
+  if (this.status === 'active') return true;
+  if (this.status === 'cancelled' && this.benefitsEndDate) {
+    return this.benefitsEndDate > new Date();
+  }
+  return false;
 });
 
 // Method to check if subscription has expired

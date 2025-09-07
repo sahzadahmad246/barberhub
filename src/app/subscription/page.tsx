@@ -88,6 +88,11 @@ export default function SubscriptionPage() {
     status: string
     endDate: string
     isTrial: boolean
+    cancelledAt?: string
+    cancelledBy?: string
+    cancelAtCycleEnd?: boolean
+    benefitsEndDate?: string
+    hasActiveBenefits?: boolean
   } | null>(null)
 
   useEffect(() => {
@@ -107,12 +112,18 @@ export default function SubscriptionPage() {
       const response = await fetch('/api/subscriptions/status')
       if (response.ok) {
         const data = await response.json()
-        setCurrentSubscription(data.data)
+        console.log('Subscription status data:', data)
+        if (data.data.hasSubscription && data.data.subscription) {
+          setCurrentSubscription(data.data.subscription)
+        } else {
+          setCurrentSubscription(null)
+        }
       }
     } catch (error) {
       console.error('Error fetching subscription status:', error)
     }
   }
+
 
   const handleSubscribe = async (planId: string) => {
     if (planId === 'trial') {
@@ -120,6 +131,66 @@ export default function SubscriptionPage() {
     } else {
       await handlePaidSubscription(planId)
     }
+  }
+
+  const handlePlanChange = async (planId: string) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/subscriptions/change-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          plan: planId,
+          billingCycle: billingCycle
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        alert(data.message || 'Plan change scheduled successfully!')
+        // Refresh subscription status
+        await fetchSubscriptionStatus()
+      } else {
+        alert(data.message || 'Failed to change plan')
+      }
+    } catch (error) {
+      console.error('Error changing plan:', error)
+      alert('Network error. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const isCurrentPlan = (planId: string) => {
+    if (!currentSubscription) return false
+    return currentSubscription.plan === planId
+  }
+
+  const getPlanButtonText = (planId: string) => {
+    if (planId === 'trial') return 'Start Free Trial'
+    if (!currentSubscription) return 'Get Started'
+    
+    // Handle cancelled subscriptions - always show "Get Started"
+    if (currentSubscription.status === 'cancelled') {
+      return 'Get Started'
+    }
+    
+    if (isCurrentPlan(planId)) return 'Current Plan'
+    
+    const currentPlan = currentSubscription.plan
+    if (currentPlan === 'pro' && planId === 'pro_plus') return 'Upgrade'
+    if (currentPlan === 'pro_plus' && planId === 'pro') return 'Downgrade'
+    
+    return 'Change Plan'
+  }
+
+  const getPlanButtonVariant = (planId: string) => {
+    if (isCurrentPlan(planId)) return 'secondary'
+    if (planId === 'trial') return 'default'
+    return 'default'
   }
 
   const handleTrialSubscription = async () => {
@@ -135,8 +206,8 @@ export default function SubscriptionPage() {
       const data = await response.json()
 
       if (response.ok) {
-        // Redirect to salon onboarding
-        router.push('/salon/onboard?message=Trial subscription activated!')
+        // Check if user has a salon and redirect accordingly
+        await redirectAfterSubscription()
       } else {
         alert(data.message || 'Failed to activate trial subscription')
       }
@@ -145,6 +216,23 @@ export default function SubscriptionPage() {
       alert('Network error. Please try again.')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const redirectAfterSubscription = async () => {
+    try {
+      // Check if user has a salon
+      const salonResponse = await fetch('/api/salon/dashboard')
+      if (salonResponse.ok) {
+        // User has a salon, redirect to dashboard
+        router.push('/salon/dashboard?message=Subscription activated successfully!')
+      } else {
+        // User doesn't have a salon, redirect to onboarding
+        router.push('/salon/onboard?message=Subscription activated successfully!')
+      }
+    } catch {
+      // Default to onboarding if we can't check
+      router.push('/salon/onboard?message=Subscription activated successfully!')
     }
   }
 
@@ -165,11 +253,20 @@ export default function SubscriptionPage() {
       const data = await response.json()
 
       if (response.ok) {
-        console.log('Payment data received:', data.data)
-        // Load Razorpay checkout
-        await loadRazorpayCheckout(data.data)
+        console.log('Subscription data received:', data.data)
+        
+        // For subscriptions, redirect to the short URL for better UX
+        if (data.data.shortUrl) {
+          // Add success redirect URL to the subscription URL
+          const successUrl = `${window.location.origin}/payment/success`
+          const subscriptionUrl = `${data.data.shortUrl}&redirect_url=${encodeURIComponent(successUrl)}`
+          window.location.href = subscriptionUrl
+        } else {
+          // Fallback to modal if short URL is not available
+          await loadRazorpayCheckout(data.data)
+        }
       } else {
-        alert(data.message || 'Failed to create order')
+        alert(data.message || 'Failed to create subscription')
       }
     } catch (error) {
       console.error('Error creating subscription:', error)
@@ -344,16 +441,39 @@ export default function SubscriptionPage() {
 
         {/* Current Subscription Status */}
         {currentSubscription && (
-          <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className={`mb-8 p-4 border rounded-lg ${
+            currentSubscription.status === 'cancelled' 
+              ? 'bg-orange-50 border-orange-200' 
+              : 'bg-blue-50 border-blue-200'
+          }`}>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-blue-900">
-                  Current Plan: {currentSubscription.plan ? currentSubscription.plan.charAt(0).toUpperCase() + currentSubscription.plan.slice(1) : 'Unknown'}
+                <h3 className={`text-lg font-semibold ${
+                  currentSubscription.status === 'cancelled' 
+                    ? 'text-orange-900' 
+                    : 'text-blue-900'
+                }`}>
+                  {currentSubscription.status === 'cancelled' 
+                    ? 'Cancelled Subscription' 
+                    : `Current Plan: ${currentSubscription.plan ? currentSubscription.plan.charAt(0).toUpperCase() + currentSubscription.plan.slice(1) : 'Unknown'}`
+                  }
                 </h3>
-                <p className="text-blue-700">
-                  Status: {currentSubscription.status || 'Unknown'} • 
-                  {currentSubscription.isTrial ? ' Trial' : ' Paid'} • 
-                  Expires: {currentSubscription.endDate ? new Date(currentSubscription.endDate).toLocaleDateString() : 'Unknown'}
+                <p className={currentSubscription.status === 'cancelled' ? 'text-orange-700' : 'text-blue-700'}>
+                  {currentSubscription.status === 'cancelled' ? (
+                    <>
+                      Your subscription is cancelled but benefits continue until{' '}
+                      {currentSubscription.benefitsEndDate 
+                        ? new Date(currentSubscription.benefitsEndDate).toLocaleDateString()
+                        : new Date(currentSubscription.endDate).toLocaleDateString()
+                      }
+                    </>
+                  ) : (
+                    <>
+                      Status: {currentSubscription.status || 'Unknown'} • 
+                      {currentSubscription.isTrial ? ' Trial' : ' Paid'} • 
+                      Expires: {currentSubscription.endDate ? new Date(currentSubscription.endDate).toLocaleDateString() : 'Unknown'}
+                    </>
+                  )}
                 </p>
               </div>
               <Button
@@ -369,14 +489,25 @@ export default function SubscriptionPage() {
 
         {/* Plans Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {plans.map((plan) => (
+          {plans.map((plan) => {
+            const isCurrent = isCurrentPlan(plan.id)
+            return (
             <Card
               key={plan.id}
               className={`relative overflow-hidden transition-all duration-300 hover:shadow-xl ${
-                plan.popular ? 'ring-2 ring-purple-500 scale-105' : 'hover:scale-105'
+                isCurrent 
+                  ? 'ring-2 ring-green-500 scale-105 bg-green-50' 
+                  : plan.popular 
+                  ? 'ring-2 ring-purple-500 scale-105' 
+                  : 'hover:scale-105'
               }`}
             >
-              {plan.popular && (
+              {isCurrent && (
+                <div className="absolute top-0 right-0 bg-green-500 text-white px-3 py-1 text-sm font-medium">
+                  Current Plan
+                </div>
+              )}
+              {!isCurrent && plan.popular && (
                 <div className="absolute top-0 right-0 bg-purple-500 text-white px-3 py-1 text-sm font-medium">
                   Most Popular
                 </div>
@@ -414,10 +545,25 @@ export default function SubscriptionPage() {
 
               <CardFooter className="pt-0">
                 <Button
-                  onClick={() => handleSubscribe(plan.id)}
-                  disabled={isLoading}
+                  onClick={() => {
+                    if (isCurrent) return null
+                    // For cancelled subscriptions, always use handleSubscribe
+                    if (currentSubscription?.status === 'cancelled') {
+                      return handleSubscribe(plan.id)
+                    }
+                    // For active subscriptions, use handlePlanChange
+                    if (currentSubscription) {
+                      return handlePlanChange(plan.id)
+                    }
+                    // For new subscriptions
+                    return handleSubscribe(plan.id)
+                  }}
+                  disabled={isLoading || isCurrent}
+                  variant={getPlanButtonVariant(plan.id)}
                   className={`w-full ${
-                    plan.popular
+                    isCurrent
+                      ? 'bg-gray-300 cursor-not-allowed'
+                      : plan.popular
                       ? 'bg-purple-600 hover:bg-purple-700'
                       : plan.id === 'trial'
                       ? 'bg-blue-600 hover:bg-blue-700'
@@ -429,11 +575,12 @@ export default function SubscriptionPage() {
                   ) : (
                     <ArrowRight className="h-4 w-4 mr-2" />
                   )}
-                  {plan.id === 'trial' ? 'Start Free Trial' : 'Get Started'}
+                  {getPlanButtonText(plan.id)}
                 </Button>
               </CardFooter>
             </Card>
-          ))}
+            )
+          })}
         </div>
 
         {/* Features Comparison */}

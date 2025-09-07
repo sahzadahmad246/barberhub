@@ -45,6 +45,11 @@ interface Subscription {
   billingCycle: string
   isTrial: boolean
   razorpayOrderId?: string
+  cancelledAt?: string
+  cancelledBy?: string
+  cancelAtCycleEnd?: boolean
+  benefitsEndDate?: string
+  hasActiveBenefits?: boolean
 }
 
 function SalonDashboardContent() {
@@ -114,6 +119,41 @@ function SalonDashboardContent() {
     )
   }
 
+  const handleManageBilling = async () => {
+    try {
+      const response = await fetch('/api/subscriptions/manage')
+      if (response.ok) {
+        const data = await response.json()
+        // Open Razorpay subscription management page
+        window.open(data.data.shortUrl, '_blank')
+      } else {
+        const error = await response.json()
+        setMessage(`Error: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Error getting billing management URL:', error)
+      setMessage('Error accessing billing management')
+    }
+  }
+
+  const handleViewInvoices = async () => {
+    try {
+      const response = await fetch('/api/subscriptions/invoices')
+      if (response.ok) {
+        const data = await response.json()
+        // For now, just show the count. You can create a modal or new page to display invoices
+        setMessage(`Found ${data.data.count} invoices. Check console for details.`)
+        console.log('Invoices:', data.data.invoices)
+      } else {
+        const error = await response.json()
+        setMessage(`Error: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Error fetching invoices:', error)
+      setMessage('Error fetching invoices')
+    }
+  }
+
   const handleSubscriptionAction = async (action: 'pause' | 'resume' | 'cancel') => {
     setIsManagingSubscription(true)
     try {
@@ -146,6 +186,7 @@ function SalonDashboardContent() {
       setIsManagingSubscription(false)
     }
   }
+
 
   const getSubscriptionStatusColor = (status: string) => {
     switch (status) {
@@ -322,6 +363,27 @@ function SalonDashboardContent() {
 
                 {/* Subscription Actions */}
                 <div className="mt-6 flex flex-wrap gap-3">
+                  {/* Billing Management Button */}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleManageBilling}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Manage Billing
+                  </Button>
+                  
+                  {/* View Invoices Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleViewInvoices}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    View Invoices
+                  </Button>
+                  
                   {subscription.status === 'active' && (
                     <>
                       <Button
@@ -342,7 +404,7 @@ function SalonDashboardContent() {
                         size="sm"
                         onClick={() => router.push('/subscription')}
                       >
-                        Upgrade/Downgrade
+                        Change Plan
                       </Button>
                     </>
                   )}
@@ -363,23 +425,43 @@ function SalonDashboardContent() {
                     </Button>
                   )}
                   
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleSubscriptionAction('cancel')}
-                    disabled={isManagingSubscription}
-                  >
-                    {isManagingSubscription ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <X className="h-4 w-4 mr-2" />
-                    )}
-                    Cancel
-                  </Button>
+                  
+                  {subscription.status !== 'cancelled' && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleSubscriptionAction('cancel')}
+                      disabled={isManagingSubscription}
+                    >
+                      {isManagingSubscription ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 mr-2" />
+                      )}
+                      Cancel
+                    </Button>
+                  )}
                 </div>
 
+                {/* Cancelled Subscription Warning */}
+                {subscription.status === 'cancelled' && (
+                  <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div className="flex items-center">
+                      <AlertTriangle className="h-5 w-5 text-orange-500 mr-2" />
+                      <p className="text-orange-700 text-sm">
+                        Your subscription is cancelled but benefits continue until{' '}
+                        {subscription.benefitsEndDate 
+                          ? new Date(subscription.benefitsEndDate).toLocaleDateString()
+                          : new Date(subscription.endDate).toLocaleDateString()
+                        }. 
+                        You can start a new subscription after this date.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Expiry Warning */}
-                {isSubscriptionExpiringSoon(subscription.endDate) && (
+                {subscription.status !== 'cancelled' && isSubscriptionExpiringSoon(subscription.endDate) && (
                   <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                     <div className="flex items-center">
                       <AlertTriangle className="h-5 w-5 text-orange-500 mr-2" />

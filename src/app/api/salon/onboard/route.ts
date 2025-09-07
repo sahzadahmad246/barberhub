@@ -73,14 +73,44 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       throw new Error('User already has a salon');
     }
 
-    // Get user's active subscription
+    // Get user's active subscription (include authenticated status)
     const subscription = await Subscription.findOne({ 
       userId: session.user.id, 
-      status: 'active' 
+      status: { $in: ['active', 'authenticated', 'created'] }
     });
 
+    // Debug: Log all subscriptions for this user
+    const allSubscriptions = await Subscription.find({ userId: session.user.id });
+    console.log('All subscriptions for user:', session.user.id, allSubscriptions);
+
     if (!subscription) {
-      throw new Error('No active subscription found');
+      // Try to sync with Razorpay if we have a subscription ID
+      const anySubscription = await Subscription.findOne({ userId: session.user.id });
+      if (anySubscription && anySubscription.razorpaySubscriptionId) {
+        try {
+          const { PaymentService } = await import('@/lib/payment-service');
+          await PaymentService.syncSubscriptionWithRazorpay(anySubscription);
+          
+          // Try again after sync
+          const syncedSubscription = await Subscription.findOne({ 
+            userId: session.user.id, 
+            status: { $in: ['active', 'authenticated', 'created'] }
+          });
+          
+          if (syncedSubscription) {
+            console.log('Found subscription after sync:', syncedSubscription);
+            return createSuccessResponse(
+              { message: 'Subscription synced, please try again' },
+              'Subscription synced successfully',
+              HTTP_STATUS.OK
+            );
+          }
+        } catch (syncError) {
+          console.error('Error syncing subscription:', syncError);
+        }
+      }
+      
+      throw new Error('No active subscription found. Please ensure your payment was successful.');
     }
 
     // Generate slug from salon name

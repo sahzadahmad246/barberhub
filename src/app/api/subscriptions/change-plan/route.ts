@@ -12,8 +12,8 @@ import {
 import { HTTP_STATUS } from '@/lib/errors';
 
 /**
- * POST /api/subscriptions/create
- * Create a Razorpay order for subscription payment
+ * POST /api/subscriptions/change-plan
+ * Change subscription plan (upgrade/downgrade)
  */
 export const POST = withErrorHandling(async (request: NextRequest) => {
   // Validate request method
@@ -48,12 +48,27 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     throw new Error('Invalid billing cycle');
   }
 
-  // Create subscription (handles cancelled subscriptions automatically)
-  const result = await PaymentService.createSubscriptionAfterCancelled(session.user.id, plan, billingCycle);
+  // Check if user has an active subscription (not cancelled)
+  const subscriptionStatus = await PaymentService.getSubscriptionStatus(session.user.id);
+  
+  if (!subscriptionStatus.hasSubscription) {
+    throw new Error('No active subscription found');
+  }
+  
+  if (subscriptionStatus.subscription?.status === 'cancelled') {
+    throw new Error('Cannot change plan for cancelled subscription. Please start a new subscription.');
+  }
+  
+  if (!subscriptionStatus.subscription || !['active', 'authenticated', 'created'].includes(subscriptionStatus.subscription.status)) {
+    throw new Error('Subscription must be active to change plan');
+  }
+
+  // Change subscription plan
+  const result = await PaymentService.changeSubscriptionPlan(session.user.id, plan, billingCycle);
 
   return createSuccessResponse(
     result,
-    'Payment order created successfully',
-    HTTP_STATUS.CREATED
+    'Subscription plan changed successfully',
+    HTTP_STATUS.OK
   );
 });

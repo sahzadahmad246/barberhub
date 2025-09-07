@@ -31,12 +31,31 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     throw new Error('Authentication required');
   }
 
-  // Parse request body
-  const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = await parseRequestBody<{
-    razorpay_payment_id: string;
-    razorpay_order_id: string;
-    razorpay_signature: string;
+  // Parse request body - support both order and subscription verification
+  const body = await parseRequestBody<{
+    razorpay_payment_id?: string;
+    razorpay_order_id?: string;
+    razorpay_signature?: string;
+    razorpay_subscription_id?: string;
   }>(request);
+
+  // Handle subscription verification
+  if (body.razorpay_subscription_id) {
+    // For subscriptions, we don't need to verify signature here as webhooks handle it
+    const result = await PaymentService.activateSubscriptionBySubscriptionId(
+      session.user.id,
+      body.razorpay_subscription_id
+    );
+    
+    return createSuccessResponse(
+      result,
+      'Subscription activated successfully',
+      HTTP_STATUS.OK
+    );
+  }
+
+  // Handle order verification (legacy support)
+  const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = body;
 
   if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
     throw new Error('Payment verification data is required');
